@@ -1,0 +1,9 @@
+# University Submission Reference: Python & Django Stack Requirements
+# (Use for local Python grading evaluation if required)
+Django>=5.0,<6.0
+reportlab>=4.1.0
+openpyxl>=3.1.2
+django-filter>=23.5
+django-cors-headers>=4.3.1
+pillow>=10.2.0
+python-dotenv>=1.0.1

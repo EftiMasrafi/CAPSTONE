@@ -1,0 +1,6 @@
+{
+  "name": "Maintenance Ticketing System",
+  "description": "Campus maintenance ticketing platform with server-enforced role-based access control, strict lifecycle state transitions, and a tamper-evident SHA-256 audit log.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
