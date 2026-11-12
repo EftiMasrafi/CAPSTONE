@@ -20,6 +20,30 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // Initialize SQLite database and seed initial data
 initDb();
 
+// Security Perimeter Middleware: IP Firewall & Security Headers
+import { isIpBanned } from './server/cybersecurity.js';
+
+app.use((req, res, next) => {
+  // Security headers
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+
+  const ip = String(req.ip || req.socket.remoteAddress || '127.0.0.1');
+
+  // Check IP firewall blacklist for API routes
+  if (req.path.startsWith('/api') && isIpBanned(ip)) {
+    res.status(403).json({
+      error: 'ACCESS FORBIDDEN: Your IP address has been blacklisted by the University Cyber Defense Firewall.',
+      ip_address: ip,
+      firewall_action: 'DROP_CONNECTION',
+    });
+    return;
+  }
+
+  next();
+});
+
 // Mount REST API
 app.use('/api', apiRouter);
 

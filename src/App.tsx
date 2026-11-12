@@ -10,7 +10,10 @@ import { AuditLogView } from './components/AuditLogView';
 import { UserManagementView } from './components/UserManagementView';
 import { ReportsView } from './components/ReportsView';
 import { TestRunnerView } from './components/TestRunnerView';
+import { SOCDashboardView } from './components/SOCDashboardView';
+import { MfaModal } from './components/MfaModal';
 import { AuthModal } from './components/AuthModal';
+import { LogOut } from 'lucide-react';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -29,6 +32,7 @@ export default function App() {
   // Modals
   const [selectedTicketId, setSelectedTicketId] = useState<number | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isMfaModalOpen, setIsMfaModalOpen] = useState(false);
 
   // Dark mode
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
@@ -217,7 +221,34 @@ export default function App() {
         isDarkMode={isDarkMode}
         onToggleDarkMode={() => setIsDarkMode(!isDarkMode)}
         onOpenCreateTicket={() => setIsCreateModalOpen(true)}
+        onOpenMfaModal={() => setIsMfaModalOpen(true)}
       />
+
+      {/* Top Session Status Bar (Provides continuous visibility of user and instant Log Out action) */}
+      <div className="bg-slate-100 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-4 sm:px-6 lg:px-8 py-2">
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2 overflow-hidden">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+            <span className="text-slate-600 dark:text-slate-300 truncate">
+              Signed in as: <strong className="text-slate-900 dark:text-white capitalize">{currentUser.name}</strong> ({currentUser.email})
+            </span>
+            <span className="px-2 py-0.5 rounded-md bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 font-bold uppercase text-[10px] shrink-0">
+              {currentUser.role}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-1.5 px-3 py-1 rounded-md bg-red-600 hover:bg-red-700 text-white font-bold text-xs transition-colors cursor-pointer shadow-xs"
+              title="Click here to immediately sign out"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span>Log Out Now</span>
+            </button>
+          </div>
+        </div>
+      </div>
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
@@ -245,8 +276,26 @@ export default function App() {
 
         {activeTab === 'audit' && currentUser.role === 'admin' && <AuditLogView />}
 
+        {activeTab === 'soc' && ['manager', 'admin'].includes(currentUser.role) && <SOCDashboardView />}
+
         {activeTab === 'tests' && <TestRunnerView />}
       </main>
+
+      {/* Persistent Floating Session Bar (Always Visible at bottom right even during scroll) */}
+      <div className="fixed bottom-4 right-4 z-40 flex items-center gap-2.5 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md px-3.5 py-2 rounded-full border border-slate-300 dark:border-slate-700 shadow-2xl text-xs">
+        <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+        <span className="text-slate-600 dark:text-slate-300 font-medium hidden sm:inline">
+          <strong className="text-slate-900 dark:text-white capitalize">{currentUser.name}</strong> ({currentUser.role})
+        </span>
+        <button
+          onClick={handleLogout}
+          className="px-3 py-1 rounded-full bg-red-600 hover:bg-red-700 text-white font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+          title="Sign out of this session"
+        >
+          <LogOut className="w-3.5 h-3.5" />
+          <span>Log Out</span>
+        </button>
+      </div>
 
       {/* Ticket Detail Inspection & State Machine Modal */}
       {selectedTicketId !== null && (
@@ -269,6 +318,11 @@ export default function App() {
             setSelectedTicketId(newId);
           }}
         />
+      )}
+
+      {/* Two-Factor Authentication Management Modal */}
+      {isMfaModalOpen && (
+        <MfaModal onClose={() => setIsMfaModalOpen(false)} />
       )}
     </div>
   );

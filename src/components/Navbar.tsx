@@ -14,6 +14,8 @@ import {
   FileSpreadsheet,
   Users,
   ShieldCheck,
+  ShieldAlert,
+  KeyRound,
   FlaskConical,
 } from 'lucide-react';
 
@@ -30,6 +32,7 @@ interface NavbarProps {
   isDarkMode: boolean;
   onToggleDarkMode: () => void;
   onOpenCreateTicket: () => void;
+  onOpenMfaModal: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -45,6 +48,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   isDarkMode,
   onToggleDarkMode,
   onOpenCreateTicket,
+  onOpenMfaModal,
 }) => {
   const [showNotifications, setShowNotifications] = useState(false);
   const [showPersonaMenu, setShowPersonaMenu] = useState(false);
@@ -84,6 +88,12 @@ export const Navbar: React.FC<NavbarProps> = ({
       visible: role === 'admin',
     },
     {
+      id: 'soc',
+      label: 'SOC Firewall',
+      icon: ShieldAlert,
+      visible: ['manager', 'admin'].includes(role),
+    },
+    {
       id: 'tests',
       label: 'Test Suite',
       icon: FlaskConical,
@@ -101,24 +111,24 @@ export const Navbar: React.FC<NavbarProps> = ({
   return (
     <header className="sticky top-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 transition-colors">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16 gap-8">
+        <div className="flex items-center justify-between h-16 gap-3 sm:gap-6">
           {/* Zone 1: Single text element wordmark */}
-          <div className="flex items-center gap-3 shrink-0">
-            <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-blue-600 text-white shadow-xs">
-              <Wrench className="w-5 h-5" />
+          <div className="flex items-center gap-2.5 shrink-0">
+            <div className="flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-blue-600 text-white shadow-xs shrink-0">
+              <Wrench className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
             <div className="flex flex-col">
-              <span className="text-base font-display font-bold tracking-tight text-slate-900 dark:text-white whitespace-nowrap">
+              <span className="text-sm sm:text-base font-display font-bold tracking-tight text-slate-900 dark:text-white whitespace-nowrap">
                 Campus Maintenance OS
               </span>
-              <span className="text-[11px] text-slate-500 dark:text-slate-400 font-sans tracking-wide">
+              <span className="text-[10px] sm:text-[11px] text-slate-500 dark:text-slate-400 font-sans tracking-wide hidden sm:block">
                 Role-Based Work Orders & Audit
               </span>
             </div>
           </div>
 
-          {/* Zone 2: Navigation Links */}
-          <nav className="hidden md:flex items-center gap-1 sm:gap-2">
+          {/* Zone 2: Navigation Links (visible on xl screens to prevent header overflow) */}
+          <nav className="hidden xl:flex items-center gap-1">
             {tabs.map((tab) => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.id;
@@ -126,21 +136,21 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-md whitespace-nowrap transition-colors cursor-pointer ${
+                  className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md whitespace-nowrap transition-colors cursor-pointer ${
                     isActive
                       ? 'bg-slate-100 dark:bg-slate-800 text-blue-600 dark:text-blue-400 font-semibold shadow-xs'
                       : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800/60'
                   }`}
                 >
-                  <Icon className="w-4 h-4" />
+                  <Icon className="w-3.5 h-3.5" />
                   <span>{tab.label}</span>
                 </button>
               );
             })}
           </nav>
 
-          {/* Zone 3: Actions & Profile */}
-          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+          {/* Zone 3: Actions & Profile (shrink-0 so never hidden) */}
+          <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
             {/* Dark Mode Switcher */}
             <button
               onClick={onToggleDarkMode}
@@ -148,6 +158,15 @@ export const Navbar: React.FC<NavbarProps> = ({
               className="p-2 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
             >
               {isDarkMode ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4" />}
+            </button>
+
+            {/* 2FA Authenticator Settings */}
+            <button
+              onClick={onOpenMfaModal}
+              title="Two-Factor Authentication (2FA) Security Settings"
+              className="p-2 text-slate-500 hover:text-blue-600 dark:text-slate-400 dark:hover:text-blue-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+            >
+              <KeyRound className="w-4 h-4" />
             </button>
 
             {/* Quick Persona Switcher for Academic Demo */}
@@ -194,6 +213,19 @@ export const Navbar: React.FC<NavbarProps> = ({
                       </span>
                     </button>
                   ))}
+
+                  <div className="pt-1.5 mt-1 border-t border-slate-100 dark:border-slate-800 px-1">
+                    <button
+                      onClick={() => {
+                        setShowPersonaMenu(false);
+                        onLogout();
+                      }}
+                      className="w-full text-left px-3 py-2 text-xs flex items-center gap-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-md transition-colors cursor-pointer font-medium"
+                    >
+                      <LogOut className="w-3.5 h-3.5" />
+                      <span>Log Out ({currentUser?.email})</span>
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -278,37 +310,50 @@ export const Navbar: React.FC<NavbarProps> = ({
               </button>
             )}
 
-            {/* Logout button */}
+            {/* Highly Visible Red Logout button */}
             <button
               onClick={onLogout}
-              title="Sign Out"
-              className="p-2 text-slate-500 hover:text-red-600 dark:text-slate-400 dark:hover:text-red-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+              title={`Sign Out (${currentUser?.email})`}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-red-600 dark:text-red-400 bg-red-50 hover:bg-red-100 dark:bg-red-950/50 dark:hover:bg-red-900/60 rounded-md border border-red-200 dark:border-red-800 transition-colors cursor-pointer shrink-0 shadow-xs"
             >
-              <LogOut className="w-4 h-4" />
+              <LogOut className="w-3.5 h-3.5 text-red-600 dark:text-red-400" />
+              <span>Log Out</span>
             </button>
           </div>
         </div>
 
-        {/* Mobile Nav strip */}
-        <div className="md:hidden flex items-center gap-1 overflow-x-auto py-2 border-t border-slate-100 dark:border-slate-800">
-          {tabs.map((tab) => {
-            const Icon = tab.icon;
-            const isActive = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-1.5 px-3 py-1 text-xs rounded-md whitespace-nowrap ${
-                  isActive
-                    ? 'bg-blue-600 text-white font-semibold'
-                    : 'text-slate-600 dark:text-slate-300'
-                }`}
-              >
-                <Icon className="w-3.5 h-3.5" />
-                <span>{tab.label}</span>
-              </button>
-            );
-          })}
+        {/* Sub-XL Responsive Navigation strip (active on tablets and preview windows) */}
+        <div className="xl:hidden flex items-center justify-between gap-1 overflow-x-auto py-2 border-t border-slate-100 dark:border-slate-800">
+          <div className="flex items-center gap-1 shrink-0">
+            {tabs.map((tab) => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md whitespace-nowrap font-medium cursor-pointer shrink-0 ${
+                    isActive
+                      ? 'bg-blue-600 text-white font-semibold shadow-xs'
+                      : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                  }`}
+                >
+                  <Icon className="w-3.5 h-3.5" />
+                  <span>{tab.label}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Secondary Logout button directly inside strip */}
+          <button
+            onClick={onLogout}
+            className="flex items-center gap-1 px-2.5 py-1 text-xs font-bold text-red-600 dark:text-red-400 bg-red-50 hover:bg-red-100 dark:bg-red-950/40 dark:hover:bg-red-900/60 rounded-md border border-red-200 dark:border-red-800 shrink-0 ml-2 cursor-pointer"
+            title="Log out of current account"
+          >
+            <LogOut className="w-3 h-3" />
+            <span>Sign Out</span>
+          </button>
         </div>
       </div>
     </header>

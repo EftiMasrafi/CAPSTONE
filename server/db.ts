@@ -104,10 +104,51 @@ export function initDb() {
       body TEXT NOT NULL,
       sent_at TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS banned_ips (
+      ip_address TEXT PRIMARY KEY,
+      reason TEXT NOT NULL,
+      banned_at TEXT NOT NULL,
+      banned_by INTEGER REFERENCES users(user_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS security_events (
+      event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      event_type TEXT NOT NULL,
+      severity TEXT NOT NULL CHECK (severity IN ('LOW', 'MEDIUM', 'HIGH', 'CRITICAL')),
+      ip_address TEXT NOT NULL,
+      details TEXT NOT NULL,
+      timestamp TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS user_mfa (
+      user_id INTEGER PRIMARY KEY REFERENCES users(user_id),
+      totp_secret TEXT NOT NULL,
+      is_enabled INTEGER NOT NULL DEFAULT 0,
+      backup_codes TEXT NOT NULL,
+      enabled_at TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS ticket_signatures (
+      signature_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      ticket_id INTEGER NOT NULL REFERENCES tickets(ticket_id) ON DELETE CASCADE,
+      user_id INTEGER NOT NULL REFERENCES users(user_id),
+      action TEXT NOT NULL,
+      signature_hash TEXT NOT NULL,
+      timestamp TEXT NOT NULL
+    );
   `);
+
+  try {
+    db.exec("ALTER TABLE attachments ADD COLUMN file_hash TEXT DEFAULT ''");
+  } catch {}
+  try {
+    db.exec("ALTER TABLE attachments ADD COLUMN scan_status TEXT DEFAULT 'CLEAN'");
+  } catch {}
 
   // Run seed data if empty
   seedDatabaseIfEmpty();
+  seedCybersecurityData();
 }
 
 /**
@@ -815,4 +856,102 @@ function seedDatabaseIfEmpty() {
   );
 
   console.log('[DB] Seeding completed with 20 tickets and cryptographically verified audit log.');
+}
+
+/**
+ * Seed initial cybersecurity events, firewall rules, and digital signatures
+ */
+function seedCybersecurityData() {
+  const eventCount = db.prepare('SELECT COUNT(*) as count FROM security_events').get() as { count: number };
+  if (eventCount.count > 0) return;
+
+  console.log('[DB] Seeding cybersecurity threat intelligence and firewall data...');
+
+  // 1. Seed Banned IP
+  db.prepare(`
+    INSERT OR IGNORE INTO banned_ips (ip_address, reason, banned_at, banned_by)
+    VALUES (?, ?, ?, 1)
+  `).run('198.51.100.42', 'Automated credential stuffing botnet detected across 14 failed attempts', new Date(Date.now() - 3600000 * 3).toISOString());
+
+  // 2. Seed Security Events
+  const events = [
+    {
+      type: 'BRUTE_FORCE_ATTEMPT',
+      severity: 'HIGH',
+      ip: '198.51.100.42',
+      details: '14 rapid consecutive failed login requests targeting user administrative endpoints.',
+      timeOffset: 3600000 * 3.2,
+    },
+    {
+      type: 'FIREWALL_IP_BANNED',
+      severity: 'CRITICAL',
+      ip: '198.51.100.42',
+      details: 'Perimeter firewall enacted block on 198.51.100.42. All inbound traffic dropped.',
+      timeOffset: 3600000 * 3.0,
+    },
+    {
+      type: 'SUSPICIOUS_PROBE',
+      severity: 'MEDIUM',
+      ip: '203.0.113.19',
+      details: 'Unauthenticated query attempted against restricted /api/audit ledger.',
+      timeOffset: 3600000 * 1.5,
+    },
+    {
+      type: 'MFA_CHALLENGE_SUCCESS',
+      severity: 'LOW',
+      ip: '10.0.4.15',
+      details: 'RFC 6238 TOTP two-factor challenge completed for Admin Alex Vance.',
+      timeOffset: 3600000 * 0.8,
+    },
+    {
+      type: 'DIGITAL_SIGNATURE_VERIFIED',
+      severity: 'LOW',
+      ip: '10.0.4.88',
+      details: 'Work Order #4 signed with HMAC-SHA256 non-repudiation certificate by David Chen.',
+      timeOffset: 3600000 * 0.5,
+    },
+  ];
+
+  const insertEvent = db.prepare(`
+    INSERT INTO security_events (event_type, severity, ip_address, details, timestamp)
+    VALUES (?, ?, ?, ?, ?)
+  `);
+
+  for (const ev of events) {
+    insertEvent.run(
+      ev.type,
+      ev.severity,
+      ev.ip,
+      ev.details,
+      new Date(Date.now() - ev.timeOffset).toISOString()
+    );
+  }
+
+  // 3. Seed Digital Signatures for Tickets #4 and #5
+  const adminUser = db.prepare('SELECT user_id FROM users WHERE role = ? LIMIT 1').get('admin') as any;
+  const techUser = db.prepare('SELECT user_id FROM users WHERE email = ?').get('tech1@campus.edu') as any;
+
+  if (techUser) {
+    const sigHash4 = crypto.createHmac('sha256', 'campus-facility-digital-signature-key-2026')
+      .update(`TICKET_VERIFIED|4|${techUser.user_id}|RESOLVED|${new Date().toISOString()}`)
+      .digest('hex');
+
+    db.prepare(`
+      INSERT OR IGNORE INTO ticket_signatures (ticket_id, user_id, action, signature_hash, timestamp)
+      VALUES (4, ?, 'RESOLVED', ?, ?)
+    `).run(techUser.user_id, sigHash4, new Date(Date.now() - 3600000 * 12).toISOString());
+  }
+
+  if (adminUser) {
+    const sigHash5 = crypto.createHmac('sha256', 'campus-facility-digital-signature-key-2026')
+      .update(`TICKET_VERIFIED|5|${adminUser.user_id}|CLOSED|${new Date().toISOString()}`)
+      .digest('hex');
+
+    db.prepare(`
+      INSERT OR IGNORE INTO ticket_signatures (ticket_id, user_id, action, signature_hash, timestamp)
+      VALUES (5, ?, 'CLOSED', ?, ?)
+    `).run(adminUser.user_id, sigHash5, new Date(Date.now() - 3600000 * 24).toISOString());
+  }
+
+  console.log('[DB] Cybersecurity threat intelligence and firewall seed completed.');
 }

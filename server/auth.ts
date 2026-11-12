@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import crypto from 'crypto';
-import { db, hashPassword, verifyPassword, logAuditEvent } from './db';
+import { db, hashPassword, verifyPassword, logAuditEvent } from './db.js';
+import { verifyTotpCode } from './cybersecurity.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'maintenance-ticketing-system-super-secret-key-2026';
 const LOCKOUT_THRESHOLD = 5;
@@ -168,6 +169,28 @@ export function handleLogin(email: string, password: string, ipAddress: string =
     return { success: false, error: errorMsg, remainingAttempts: Math.max(0, LOCKOUT_THRESHOLD - newFailed) };
   }
 
+  // Check 2FA requirement
+  const mfaRecord = db.prepare('SELECT is_enabled, totp_secret FROM user_mfa WHERE user_id = ?').get(user.user_id) as any;
+  if (mfaRecord && mfaRecord.is_enabled === 1) {
+    const mfaPayload = {
+      user_id: user.user_id,
+      action: 'mfa_challenge',
+      exp: Date.now() + 5 * 60 * 1000, // 5 minutes
+    };
+    const mfaPayloadStr = Buffer.from(JSON.stringify(mfaPayload)).toString('base64url');
+    const signature = crypto.createHmac('sha256', JWT_SECRET).update(mfaPayloadStr).digest('base64url');
+    const mfaToken = `${mfaPayloadStr}.${signature}`;
+
+    logAuditEvent(user.user_id, 'MFA_CHALLENGE_ISSUED', `User #${user.user_id}`, null, '2FA challenge prompted at login', ipAddress);
+
+    return {
+      success: true,
+      mfa_required: true,
+      mfa_token: mfaToken,
+      user_id: user.user_id,
+    };
+  }
+
   // Success: reset failed attempts
   db.prepare('UPDATE users SET failed_attempts = 0, locked_until = NULL WHERE user_id = ?').run(user.user_id);
 
@@ -185,3 +208,74 @@ export function handleLogin(email: string, password: string, ipAddress: string =
 
   return { success: true, token, user: authUser };
 }
+
+/**
+ * Verify MFA Challenge (TOTP Code or Backup Code)
+ */
+export function verifyMfaLogin(mfaToken: string, code: string, ipAddress: string = '127.0.0.1') {
+  try {
+    const [payloadStr, signature] = mfaToken.split('.');
+    if (!payloadStr || !signature) return { success: false, error: 'Invalid MFA session.' };
+
+    const expectedSig = crypto.createHmac('sha256', JWT_SECRET).update(payloadStr).digest('base64url');
+    if (signature !== expectedSig) return { success: false, error: 'Invalid or forged MFA token.' };
+
+    const payload = JSON.parse(Buffer.from(payloadStr, 'base64url').toString('utf-8'));
+    if (Date.now() > payload.exp || payload.action !== 'mfa_challenge') {
+      return { success: false, error: 'MFA challenge timed out. Please sign in again.' };
+    }
+
+    const userId = payload.user_id;
+    const mfaRecord = db.prepare('SELECT * FROM user_mfa WHERE user_id = ?').get(userId) as any;
+    if (!mfaRecord || mfaRecord.is_enabled !== 1) {
+      return { success: false, error: 'MFA is not enabled for this user.' };
+    }
+
+    // 1. Check TOTP Code
+    const isTotpValid = verifyTotpCode(mfaRecord.totp_secret, code.trim());
+
+    let authenticated = isTotpValid;
+    let usedRecoveryCode = false;
+
+    // 2. Check Backup Recovery Codes if TOTP failed
+    if (!authenticated && mfaRecord.backup_codes) {
+      const storedCodes = JSON.parse(mfaRecord.backup_codes) as string[];
+      const codeIndex = storedCodes.indexOf(code.trim().toUpperCase());
+      if (codeIndex !== -1) {
+        authenticated = true;
+        usedRecoveryCode = true;
+        // Consume backup code (single-use)
+        storedCodes.splice(codeIndex, 1);
+        db.prepare('UPDATE user_mfa SET backup_codes = ? WHERE user_id = ?').run(
+          JSON.stringify(storedCodes),
+          userId
+        );
+      }
+    }
+
+    if (!authenticated) {
+      logAuditEvent(userId, 'MFA_CHALLENGE_FAILED', `User #${userId}`, null, 'Invalid TOTP / backup code supplied', ipAddress);
+      return { success: false, error: 'Invalid 6-digit verification code or recovery key.' };
+    }
+
+    // Success
+    db.prepare('UPDATE users SET failed_attempts = 0, locked_until = NULL WHERE user_id = ?').run(userId);
+
+    const user = db.prepare('SELECT user_id, name, email, role, department, is_active FROM users WHERE user_id = ?').get(userId) as AuthenticatedUser;
+    const token = createSessionToken(user);
+
+    logAuditEvent(
+      userId,
+      usedRecoveryCode ? 'MFA_RECOVERY_CODE_CONSUMED' : 'MFA_LOGIN_SUCCESS',
+      `User #${userId}`,
+      null,
+      usedRecoveryCode ? 'Authenticated via single-use recovery code' : 'Authenticated via RFC 6238 TOTP',
+      ipAddress
+    );
+
+    return { success: true, token, user };
+  } catch (err: any) {
+    return { success: false, error: err.message || 'MFA validation failed.' };
+  }
+}
+
