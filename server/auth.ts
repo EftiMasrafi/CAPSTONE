@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import crypto from 'crypto';
 import { db, hashPassword, verifyPassword, logAuditEvent } from './db.js';
-import { verifyTotpCode } from './cybersecurity.js';
+import { verifyTotpCode, registerUserSession, isSessionRevoked } from './cybersecurity.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'maintenance-ticketing-system-super-secret-key-2026';
 const LOCKOUT_THRESHOLD = 5;
@@ -23,8 +23,14 @@ export interface AuthRequest extends Request {
 /**
  * Generate HMAC-SHA256 signed session token
  */
-export function createSessionToken(user: AuthenticatedUser): string {
+export function createSessionToken(
+  user: AuthenticatedUser,
+  ip: string = '127.0.0.1',
+  userAgent: string = 'Campus Web Client'
+): string {
+  const sessionId = crypto.randomBytes(16).toString('hex');
   const payload = {
+    jti: sessionId,
     user_id: user.user_id,
     email: user.email,
     role: user.role,
@@ -32,13 +38,18 @@ export function createSessionToken(user: AuthenticatedUser): string {
   };
   const payloadStr = Buffer.from(JSON.stringify(payload)).toString('base64url');
   const signature = crypto.createHmac('sha256', JWT_SECRET).update(payloadStr).digest('base64url');
+
+  try {
+    registerUserSession(sessionId, user.user_id, ip, userAgent);
+  } catch {}
+
   return `${payloadStr}.${signature}`;
 }
 
 /**
  * Verify HMAC-SHA256 signed session token
  */
-export function verifySessionToken(token: string): { user_id: number; email: string; role: string } | null {
+export function verifySessionToken(token: string): { user_id: number; email: string; role: string; jti?: string } | null {
   try {
     const [payloadStr, signature] = token.split('.');
     if (!payloadStr || !signature) return null;
@@ -48,6 +59,10 @@ export function verifySessionToken(token: string): { user_id: number; email: str
 
     const payload = JSON.parse(Buffer.from(payloadStr, 'base64url').toString('utf-8'));
     if (Date.now() > payload.exp) return null;
+
+    if (payload.jti && isSessionRevoked(payload.jti)) {
+      return null;
+    }
 
     return payload;
   } catch {

@@ -276,15 +276,30 @@ export const TicketList: React.FC<TicketListProps> = ({
                       </span>
                     </td>
 
-                    {/* Status */}
+                    {/* Status & SLA */}
                     <td className="py-3 px-3">
-                      <span
-                        className={`inline-block px-2.5 py-0.5 text-[11px] font-semibold rounded-full ${getStatusStyle(
-                          t.status
-                        )}`}
-                      >
-                        {t.status}
-                      </span>
+                      <div className="flex flex-col gap-1 items-start">
+                        <span
+                          className={`inline-block px-2.5 py-0.5 text-[11px] font-semibold rounded-full ${getStatusStyle(
+                            t.status
+                          )}`}
+                        >
+                          {t.status}
+                        </span>
+                        {!['Resolved', 'Closed'].includes(t.status) && (
+                          <span
+                            className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded ${
+                              t.priority === 'Critical'
+                                ? 'bg-red-50 text-red-700 dark:bg-red-950/60 dark:text-red-400 border border-red-200 dark:border-red-900/50'
+                                : t.priority === 'High'
+                                ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-400 border border-amber-200 dark:border-amber-900/50'
+                                : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
+                            }`}
+                          >
+                            SLA: {t.priority === 'Critical' ? '2h max' : t.priority === 'High' ? '8h max' : '24h max'}
+                          </span>
+                        )}
+                      </div>
                     </td>
 
                     {/* Assignee */}

@@ -137,6 +137,83 @@ export function initDb() {
       signature_hash TEXT NOT NULL,
       timestamp TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS user_sessions (
+      session_id TEXT PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+      ip_address TEXT NOT NULL,
+      user_agent TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      last_active TEXT NOT NULL,
+      is_revoked INTEGER NOT NULL DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS waf_rules (
+      rule_id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT NOT NULL,
+      pattern TEXT NOT NULL,
+      category TEXT NOT NULL,
+      severity TEXT NOT NULL,
+      is_enabled INTEGER NOT NULL DEFAULT 1,
+      match_count INTEGER NOT NULL DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS waf_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS dlp_incidents (
+      incident_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER REFERENCES users(user_id),
+      ticket_id INTEGER REFERENCES tickets(ticket_id),
+      data_type TEXT NOT NULL,
+      original_snippet TEXT NOT NULL,
+      redacted_snippet TEXT NOT NULL,
+      timestamp TEXT NOT NULL,
+      ip_address TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS campus_facilities (
+      facility_code TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      type TEXT NOT NULL,
+      location TEXT NOT NULL,
+      health_score INTEGER NOT NULL DEFAULT 100,
+      uptime_pct REAL NOT NULL DEFAULT 99.9,
+      status TEXT NOT NULL DEFAULT 'OPTIMAL',
+      power_kw REAL NOT NULL,
+      temp_c REAL NOT NULL,
+      active_incidents INTEGER NOT NULL DEFAULT 0,
+      critical_assets TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS preventive_assets (
+      asset_id TEXT PRIMARY KEY,
+      facility_code TEXT NOT NULL REFERENCES campus_facilities(facility_code),
+      asset_name TEXT NOT NULL,
+      category TEXT NOT NULL,
+      health_index INTEGER NOT NULL,
+      mtbf_days INTEGER NOT NULL,
+      mttr_hours REAL NOT NULL,
+      failure_risk_pct INTEGER NOT NULL,
+      last_serviced_at TEXT NOT NULL,
+      recommended_action TEXT NOT NULL,
+      priority TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS emergency_broadcasts (
+      broadcast_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      message TEXT NOT NULL,
+      severity TEXT NOT NULL CHECK (severity IN ('INFO', 'WARNING', 'CRITICAL', 'LOCKDOWN')),
+      facility_code TEXT,
+      created_by INTEGER NOT NULL REFERENCES users(user_id),
+      is_active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL,
+      cleared_at TEXT
+    );
   `);
 
   try {
@@ -149,6 +226,7 @@ export function initDb() {
   // Run seed data if empty
   seedDatabaseIfEmpty();
   seedCybersecurityData();
+  seedAdvancedFeatures();
 }
 
 /**
@@ -954,4 +1032,253 @@ function seedCybersecurityData() {
   }
 
   console.log('[DB] Cybersecurity threat intelligence and firewall seed completed.');
+}
+
+export function seedAdvancedFeatures() {
+  // 1. Seed WAF Settings & Rules
+  const existingWafRules = db.prepare('SELECT COUNT(*) as count FROM waf_rules').get() as { count: number };
+  if (existingWafRules.count === 0) {
+    db.prepare('INSERT OR REPLACE INTO waf_settings (key, value) VALUES (?, ?)').run('mode', 'ACTIVE_BLOCK');
+    db.prepare('INSERT OR REPLACE INTO waf_settings (key, value) VALUES (?, ?)').run('honeypot_auto_ban', 'true');
+
+    const rules = [
+      {
+        id: 'WAF-SQLI-01',
+        name: 'SQL Injection - Union / Tautology',
+        desc: 'Detects unauthorized UNION SELECT, OR 1=1, and DROP TABLE SQL injection payloads.',
+        pattern: '\\b(union\\s+select|or\\s+1\\s*=\\s*1|drop\\s+table|exec\\s*\\(|benchmark\\s*\\()\\b',
+        cat: 'SQL_INJECTION',
+        sev: 'CRITICAL',
+      },
+      {
+        id: 'WAF-XSS-02',
+        name: 'Cross-Site Scripting (XSS) Sanitizer',
+        desc: 'Intercepts script tags, eval constructs, and inline javascript event handlers.',
+        pattern: '(<script|javascript:|onerror\\s*=|onload\\s*=|eval\\(|document\\.cookie)',
+        cat: 'XSS',
+        sev: 'HIGH',
+      },
+      {
+        id: 'WAF-LFI-03',
+        name: 'Path Traversal & System File Access',
+        desc: 'Detects directory traversal sequences (../) and attempts to query /etc/passwd or win.ini.',
+        pattern: '(\\.\\.[\\/\\\\]|[\\/\\\\]etc[\\/\\\\]passwd|[\\/\\\\]windows[\\/\\\\]win\\.ini|boot\\.ini)',
+        cat: 'PATH_TRAVERSAL',
+        sev: 'CRITICAL',
+      },
+      {
+        id: 'WAF-POT-04',
+        name: 'Canary & Honeypot Recon Trap',
+        desc: 'Catches automated bot crawlers scanning for .env, wp-admin, or hidden honeytraps.',
+        pattern: '(/api/security/honeypot|\\.env|wp-admin|phpmyadmin|id_rsa|\\.git\\/)',
+        cat: 'RECONNAISSANCE',
+        sev: 'CRITICAL',
+      },
+      {
+        id: 'WAF-RCE-05',
+        name: 'Remote Command Execution (RCE) Guard',
+        desc: 'Blocks shell pipe operators and execution commands (cat, whoami, powershell, curl).',
+        pattern: '(;\\s*(rm|cat|whoami|curl|wget|bash|sh|powershell)\\b|\\|\\s*(bash|sh|powershell))',
+        cat: 'COMMAND_INJECTION',
+        sev: 'CRITICAL',
+      },
+    ];
+
+    const insertRule = db.prepare(`
+      INSERT INTO waf_rules (rule_id, name, description, pattern, category, severity, is_enabled, match_count)
+      VALUES (?, ?, ?, ?, ?, ?, 1, 0)
+    `);
+
+    for (const r of rules) {
+      insertRule.run(r.id, r.name, r.desc, r.pattern, r.cat, r.sev);
+    }
+  }
+
+  // 2. Seed Campus Facilities & Asset Digital Twins
+  const existingFacilities = db.prepare('SELECT COUNT(*) as count FROM campus_facilities').get() as { count: number };
+  if (existingFacilities.count === 0) {
+    const facilities = [
+      {
+        code: 'FAC-01',
+        name: 'Ada Lovelace Engineering Complex',
+        type: 'Research & High-Performance Computing',
+        location: 'North Campus Zone A',
+        health: 94,
+        uptime: 99.8,
+        status: 'OPTIMAL',
+        power: 412.5,
+        temp: 21.4,
+        incidents: 2,
+        assets: 'High-Density GPU Cluster, Clean Energy Microgrid, Robotics Prototyping Bay',
+      },
+      {
+        code: 'FAC-02',
+        name: 'Rosalind Franklin Bio-Sciences Center',
+        type: 'Cleanrooms & Biological Containment',
+        location: 'Medical & Bio Hub - Wing C',
+        health: 76,
+        uptime: 98.4,
+        status: 'WARNING',
+        power: 285.0,
+        temp: 20.1,
+        incidents: 4,
+        assets: 'Cryo-Storage -80C Freezers, Fume Hood Exhaust Bank, Bio-Safety Autoclaves',
+      },
+      {
+        code: 'FAC-03',
+        name: 'Turing Central Computing & Data Center',
+        type: 'Mission-Critical Campus Core',
+        location: 'Sub-Ground Sector B',
+        health: 89,
+        uptime: 99.99,
+        status: 'OPTIMAL',
+        power: 650.0,
+        temp: 19.5,
+        incidents: 1,
+        assets: 'Modular UPS Battery Arrays, Dual CRAC Precision Chillers, Fiber Edge Gateways',
+      },
+      {
+        code: 'FAC-04',
+        name: 'Central Energy Substation & Steam Plant',
+        type: 'Power Distribution & Cogeneration',
+        location: 'South Utility Yard',
+        health: 68,
+        uptime: 97.2,
+        status: 'CRITICAL',
+        power: 890.0,
+        temp: 31.8,
+        incidents: 5,
+        assets: 'Step-Down Transformers 33kV, High-Pressure Steam Boilers, Backup Turbines',
+      },
+      {
+        code: 'FAC-05',
+        name: 'Newton Academic & Lecture Tower',
+        type: 'Classrooms, Auditorium & Laboratories',
+        location: 'Central Quadrangle',
+        health: 91,
+        uptime: 99.5,
+        status: 'OPTIMAL',
+        power: 195.0,
+        temp: 22.0,
+        incidents: 1,
+        assets: 'High-Speed Traction Elevators, Multi-Zone Variable Air Volume Units (VAV)',
+      },
+    ];
+
+    const insertFacility = db.prepare(`
+      INSERT INTO campus_facilities (facility_code, name, type, location, health_score, uptime_pct, status, power_kw, temp_c, active_incidents, critical_assets)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    for (const f of facilities) {
+      insertFacility.run(f.code, f.name, f.type, f.location, f.health, f.uptime, f.status, f.power, f.temp, f.incidents, f.assets);
+    }
+
+    // Seed Predictive Maintenance Assets
+    const assets = [
+      {
+        id: 'AST-101',
+        facility: 'FAC-02',
+        name: 'Cryo-Freezer #3 (-80°C Ultra-Low)',
+        cat: 'Refrigeration',
+        health: 62,
+        mtbf: 120,
+        mttr: 3.5,
+        risk: 78,
+        lastServiced: '2026-08-15',
+        action: 'Compressor thermal cycling exceeds baseline standard by 34%. Overhaul secondary expansion valve.',
+        prio: 'High',
+      },
+      {
+        id: 'AST-102',
+        facility: 'FAC-04',
+        name: 'Substation 33kV Step-Down Transformer #2',
+        cat: 'Power Distribution',
+        health: 55,
+        mtbf: 90,
+        mttr: 6.0,
+        risk: 84,
+        lastServiced: '2026-07-10',
+        action: 'Dielectric insulation degradation detected. Immediate oil flush and gas chromatography required.',
+        prio: 'Critical',
+      },
+      {
+        id: 'AST-103',
+        facility: 'FAC-03',
+        name: 'Data Center Precision CRAC Unit #1',
+        cat: 'HVAC / Environmental',
+        health: 74,
+        mtbf: 180,
+        mttr: 2.0,
+        risk: 42,
+        lastServiced: '2026-09-01',
+        action: 'Dual compressor fan belt tension approaching 9,000h service life limit; swap drive belt.',
+        prio: 'Medium',
+      },
+      {
+        id: 'AST-104',
+        facility: 'FAC-02',
+        name: 'Cleanroom ISO-5 HEPA Air Handling Filter Bank',
+        cat: 'Air Filtration',
+        health: 66,
+        mtbf: 60,
+        mttr: 1.5,
+        risk: 65,
+        lastServiced: '2026-10-05',
+        action: 'Differential pressure gauge reading 280 Pa; HEPA filter replacement mandatory.',
+        prio: 'High',
+      },
+      {
+        id: 'AST-105',
+        facility: 'FAC-05',
+        name: 'Newton Tower Passenger Elevator #4 Governor',
+        cat: 'Vertical Transport',
+        health: 88,
+        mtbf: 365,
+        mttr: 4.0,
+        risk: 29,
+        lastServiced: '2026-06-20',
+        action: 'Annual statutory safety brake and counterweight drop calibration due.',
+        prio: 'Medium',
+      },
+    ];
+
+    const insertAsset = db.prepare(`
+      INSERT INTO preventive_assets (asset_id, facility_code, asset_name, category, health_index, mtbf_days, mttr_hours, failure_risk_pct, last_serviced_at, recommended_action, priority)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    for (const a of assets) {
+      insertAsset.run(a.id, a.facility, a.name, a.cat, a.health, a.mtbf, a.mttr, a.risk, a.lastServiced, a.action, a.prio);
+    }
+  }
+
+  // 3. Seed Emergency Broadcast demo record (inactive)
+  const existingBroadcasts = db.prepare('SELECT COUNT(*) as count FROM emergency_broadcasts').get() as { count: number };
+  if (existingBroadcasts.count === 0) {
+    const adminUser = db.prepare('SELECT user_id FROM users WHERE role = ? LIMIT 1').get('admin') as any;
+    if (adminUser) {
+      db.prepare(`
+        INSERT INTO emergency_broadcasts (title, message, severity, facility_code, created_by, is_active, created_at, cleared_at)
+        VALUES (?, ?, 'INFO', 'FAC-04', ?, 0, ?, ?)
+      `).run(
+        'Central Substation Scheduled Maintenance Window',
+        'Routine electrical switchgear testing completed successfully. All campus power circuits nominal.',
+        adminUser.user_id,
+        new Date(Date.now() - 3600000 * 48).toISOString(),
+        new Date(Date.now() - 3600000 * 46).toISOString()
+      );
+    }
+  }
+
+  // 4. Seed initial DLP incident demonstration
+  const existingDlp = db.prepare('SELECT COUNT(*) as count FROM dlp_incidents').get() as { count: number };
+  if (existingDlp.count === 0) {
+    db.prepare(`
+      INSERT INTO dlp_incidents (user_id, ticket_id, data_type, original_snippet, redacted_snippet, timestamp, ip_address)
+      VALUES (NULL, NULL, 'CREDIT_CARD', 'Card 4532-****-****-9821 submitted in laboratory equipment invoice', 'Card [REDACTED-CREDIT-CARD] submitted in laboratory equipment invoice', ?, '192.168.1.45')
+    `).run(new Date(Date.now() - 3600000 * 5).toISOString());
+  }
+
+  console.log('[DB] High-level executive and cybersecurity advanced features initialized.');
 }

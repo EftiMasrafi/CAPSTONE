@@ -177,3 +177,160 @@ export interface TestSuiteResult {
     duration_ms: number;
   }>;
 }
+
+// ==========================================
+// ADVANCED CYBERSECURITY TYPES
+// ==========================================
+
+export interface WafRule {
+  rule_id: string;
+  name: string;
+  description: string;
+  pattern: string;
+  category: string;
+  severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  is_enabled: number;
+  match_count: number;
+}
+
+export interface SecurityPostureReport {
+  score: number;
+  grade: 'A+' | 'A' | 'B' | 'C' | 'D' | 'F';
+  lastScanned: string;
+  summary: {
+    passedChecks: number;
+    warningChecks: number;
+    failedChecks: number;
+    totalChecks: number;
+  };
+  vectors: Array<{
+    category: string;
+    score: number;
+    status: 'PASS' | 'WARN' | 'FAIL';
+    details: string;
+  }>;
+  vulnerabilities: Array<{
+    id: string;
+    title: string;
+    severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+    owaspCategory: string;
+    description: string;
+    remediation: string;
+    status: 'RESOLVED' | 'ACTIVE';
+  }>;
+}
+
+export interface DlpIncident {
+  incident_id: number;
+  user_id: number | null;
+  user_name?: string;
+  user_email?: string;
+  ticket_id: number | null;
+  data_type: string;
+  original_snippet: string;
+  redacted_snippet: string;
+  timestamp: string;
+  ip_address: string;
+}
+
+export interface ActiveSession {
+  session_id: string;
+  user_id: number;
+  user_name: string;
+  user_email: string;
+  user_role: Role;
+  ip_address: string;
+  user_agent: string;
+  created_at: string;
+  last_active: string;
+  is_revoked: number;
+}
+
+// ==========================================
+// HIGH-LEVEL EXECUTIVE OPERATIONS TYPES
+// ==========================================
+
+export interface CampusFacility {
+  facility_code: string;
+  name: string;
+  type: string;
+  location: string;
+  health_score: number;
+  uptime_pct: number;
+  status: 'OPTIMAL' | 'WARNING' | 'CRITICAL';
+  power_kw: number;
+  temp_c: number;
+  active_incidents: number;
+  critical_assets: string;
+}
+
+export interface PreventiveAsset {
+  asset_id: string;
+  facility_code: string;
+  facility_name?: string;
+  facility_location?: string;
+  facility_status?: string;
+  asset_name: string;
+  category: string;
+  health_index: number;
+  mtbf_days: number;
+  mttr_hours: number;
+  failure_risk_pct: number;
+  last_serviced_at: string;
+  recommended_action: string;
+  priority: TicketPriority;
+}
+
+export interface PredictiveMaintenanceData {
+  summary: {
+    total_assets: number;
+    high_risk_assets: number;
+    avg_mtbf_days: number;
+    avg_health_index: number;
+  };
+  assets: PreventiveAsset[];
+}
+
+export interface SlaTicket {
+  ticket_id: number;
+  title: string;
+  priority: TicketPriority;
+  status: TicketStatus;
+  location: string;
+  created_at: string;
+  assigned_to: number | null;
+  creator_name?: string;
+  assignee_name?: string;
+  category_name?: string;
+  sla_limit_minutes: number;
+  elapsed_minutes: number;
+  remaining_minutes: number;
+  is_breached: boolean;
+  is_approaching: boolean;
+  health: 'BREACHED' | 'APPROACHING_BREACH' | 'HEALTHY';
+}
+
+export interface SlaMatrixData {
+  summary: {
+    total_active: number;
+    breached_count: number;
+    approaching_count: number;
+    healthy_count: number;
+    sla_compliance_rate: number;
+  };
+  tickets: SlaTicket[];
+}
+
+export interface EmergencyBroadcast {
+  broadcast_id: number;
+  title: string;
+  message: string;
+  severity: 'INFO' | 'WARNING' | 'CRITICAL' | 'LOCKDOWN';
+  facility_code?: string;
+  facility_name?: string;
+  created_by: number;
+  broadcaster_name?: string;
+  is_active: number;
+  created_at: string;
+  cleared_at?: string;
+}

@@ -21,7 +21,18 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 initDb();
 
 // Security Perimeter Middleware: IP Firewall & Security Headers
-import { isIpBanned } from './server/cybersecurity.js';
+import { isIpBanned, inspectRequestWaf, banIpAddress } from './server/cybersecurity.js';
+
+// Honeypot Canary Traps (catches automated scanners)
+app.all(['/wp-admin*', '/.env', '/api/security/honeypot', '/id_rsa'], (req, res) => {
+  const ip = String(req.ip || req.socket.remoteAddress || '127.0.0.1');
+  banIpAddress(ip, `Canary Trap: Automated intrusion attempt against decoy ${req.originalUrl}`, 1);
+  res.status(403).json({
+    error: 'SECURITY HONEYPOT TRIGGERED: Intrusion scan detected. Offending IP address quarantined.',
+    ip_address: ip,
+    action: 'IMMEDIATE_QUARANTINE',
+  });
+});
 
 app.use((req, res, next) => {
   // Security headers
@@ -39,6 +50,21 @@ app.use((req, res, next) => {
       firewall_action: 'DROP_CONNECTION',
     });
     return;
+  }
+
+  // Next-Gen WAF Deep Packet Inspection
+  if (req.path.startsWith('/api') && !req.path.startsWith('/api/security') && !req.path.startsWith('/api/tests')) {
+    const payloadStr = JSON.stringify(req.body || {}) + ' ' + JSON.stringify(req.query || {});
+    const wafResult = inspectRequestWaf(req.path, req.method, payloadStr, ip);
+    if (wafResult.blocked) {
+      res.status(403).json({
+        error: wafResult.reason,
+        rule_name: wafResult.ruleName,
+        category: wafResult.category,
+        action: 'PACKET_BLOCKED',
+      });
+      return;
+    }
   }
 
   next();

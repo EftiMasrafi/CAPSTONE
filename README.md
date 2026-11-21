@@ -78,19 +78,34 @@ The database comes pre-seeded with 4 roles and 20 realistic university tickets:
 2. **Brute-Force Lockout**: Automatically locks an account for 15 minutes after 5 consecutive failed login attempts; Admins can reset lockouts with 1 click.
 3. **Server-Side Authorization**: Enforced on all REST endpoints (`requireAuth`, `requireRoles`).
 4. **Data Isolation**: Reporters and technicians cannot query tickets outside their authorized scope.
-5. **File Attachment Validation**: Enforces MIME types (JPEG, PNG, WEBP, PDF) and a strict 5MB upload ceiling.
+5. **File Attachment Validation**: Enforces MIME types (JPEG, PNG, WEBP, PDF) and magic-byte inspection against disguised PE/ELF binaries.
+6. **Next-Gen L7 Web Application Firewall (WAF)**: Deep packet inspection guarding against SQL Injection (`UNION SELECT`, `' OR 1=1`), Cross-Site Scripting (`<script>`, event handlers), Path Traversal (`../`), and RCE shell execution.
+7. **Canary Honeypot Decoys**: Traps automated vulnerability crawlers probing `/.env`, `/wp-admin`, or `/api/security/honeypot`, dropping connection and enacting automated firewall IP quarantine.
+8. **Data Loss Prevention (DLP)**: Real-time regex sanitization masking Credit Cards, Social Security Numbers (SSN), API Secrets, and plaintext passwords before database storage.
+9. **Zero-Trust Active Session Vault**: Cryptographic HMAC-SHA256 bearer tokens with device fingerprinting and 1-click token revocation.
+10. **Automated Security Posture Audit**: Continuous evaluation against NIST SP 800-53 and OWASP Top 10 standards with real-time scoring.
 
 ---
 
-## 6. How to Run & Test
+## 6. High-Level Enterprise Operations
+
+1. **Predictive Equipment Degradation Modeling**: AI telemetry calculating MTBF (Mean Time Between Failures), MTTR, and 30-day breakdown risk percentages across campus equipment assets.
+2. **Proactive Preventive Work Order Generator**: 1-click dispatching of scheduled preventative maintenance before catastrophic failure occurs.
+3. **Real-Time SLA Breach Matrix**: Dynamic timers enforcing priority SLAs (Critical: 2h, High: 8h, Medium: 24h, Low: 72h) with color-coded warning states and executive escalation dispatch.
+4. **Campus Facility Digital Twin**: Spatial visualizer of 5 campus complexes (Engineering, Bio-Sciences, Data Center, Central Substation, Newton Tower) with real-time telemetry (kW power load, temperature, health score).
+5. **Campus Emergency Incident Command & Lockdown**: Facility-wide emergency broadcasting system with real-time alert banners and immutable audit logging.
+
+---
+
+## 7. How to Run & Test
 
 ```bash
 # Install dependencies
-npm install
+npm install --legacy-peer-deps
 
 # Run full-stack server (Node/Express API + Vite frontend on Port 3000)
 npm run dev
 
 # Run automated tests
-# You can also run all tests live from the UI "Test Suite" tab
+# You can also run all 16 test assertions live from the UI "Test Suite" tab
 ```

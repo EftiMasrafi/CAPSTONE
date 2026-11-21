@@ -13,7 +13,10 @@ import { TestRunnerView } from './components/TestRunnerView';
 import { SOCDashboardView } from './components/SOCDashboardView';
 import { MfaModal } from './components/MfaModal';
 import { AuthModal } from './components/AuthModal';
-import { LogOut } from 'lucide-react';
+import { CyberDefenseView } from './components/CyberDefenseView';
+import { ExecutiveOpsView } from './components/ExecutiveOpsView';
+import { EmergencyBroadcast } from './types';
+import { LogOut, Megaphone, ShieldAlert, X } from 'lucide-react';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -28,6 +31,7 @@ export default function App() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [isLoadingTickets, setIsLoadingTickets] = useState(false);
+  const [activeBroadcast, setActiveBroadcast] = useState<EmergencyBroadcast | null>(null);
 
   // Modals
   const [selectedTicketId, setSelectedTicketId] = useState<number | null>(null);
@@ -114,9 +118,21 @@ export default function App() {
     }
   };
 
+  const fetchBroadcast = async () => {
+    try {
+      const res = await apiRequest<{ active_broadcast: EmergencyBroadcast | null }>('/api/executive/emergency-broadcast');
+      setActiveBroadcast(res.active_broadcast);
+    } catch {
+      // ignore in background
+    }
+  };
+
   useEffect(() => {
     loadCurrentUser();
     fetchCategories();
+    fetchBroadcast();
+    const interval = setInterval(fetchBroadcast, 15000);
+    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
@@ -224,6 +240,31 @@ export default function App() {
         onOpenMfaModal={() => setIsMfaModalOpen(true)}
       />
 
+      {/* Live Campus Emergency Broadcast Banner */}
+      {activeBroadcast && (
+        <div
+          className={`px-4 py-2.5 border-b text-xs flex items-center justify-between gap-3 ${
+            activeBroadcast.severity === 'LOCKDOWN' || activeBroadcast.severity === 'CRITICAL'
+              ? 'bg-red-600 text-white border-red-700 animate-pulse'
+              : 'bg-amber-500 text-slate-950 border-amber-600 font-semibold'
+          }`}
+        >
+          <div className="flex items-center gap-2 max-w-5xl">
+            <Megaphone className="w-4 h-4 shrink-0" />
+            <span>
+              <strong>[EMERGENCY {activeBroadcast.severity}]: {activeBroadcast.title}</strong> — {activeBroadcast.message}
+            </span>
+          </div>
+          <button
+            onClick={() => setActiveBroadcast(null)}
+            className="p-1 hover:bg-black/10 rounded cursor-pointer shrink-0"
+            title="Dismiss Banner from view"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
       {/* Top Session Status Bar (Provides continuous visibility of user and instant Log Out action) */}
       <div className="bg-slate-100 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-4 sm:px-6 lg:px-8 py-2">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-3 text-xs">
@@ -265,6 +306,16 @@ export default function App() {
             onRefresh={fetchTickets}
             onSelectTicket={(ticket) => setSelectedTicketId(ticket.ticket_id)}
             onOpenCreateModal={() => setIsCreateModalOpen(true)}
+          />
+        )}
+
+        {activeTab === 'cyber' && ['manager', 'admin'].includes(currentUser.role) && <CyberDefenseView />}
+
+        {activeTab === 'executive' && ['technician', 'manager', 'admin'].includes(currentUser.role) && (
+          <ExecutiveOpsView
+            currentRole={currentUser.role}
+            onRefreshTickets={fetchTickets}
+            onViewTicket={(id) => setSelectedTicketId(id)}
           />
         )}
 

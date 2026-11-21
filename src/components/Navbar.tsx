@@ -17,6 +17,8 @@ import {
   ShieldAlert,
   KeyRound,
   FlaskConical,
+  Building2,
+  TrendingUp,
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -86,6 +88,18 @@ export const Navbar: React.FC<NavbarProps> = ({
       label: 'Audit Log & Chain',
       icon: ShieldCheck,
       visible: role === 'admin',
+    },
+    {
+      id: 'cyber',
+      label: 'Cyber Defense',
+      icon: ShieldAlert,
+      visible: ['manager', 'admin'].includes(role),
+    },
+    {
+      id: 'executive',
+      label: 'Executive Ops',
+      icon: Building2,
+      visible: ['technician', 'manager', 'admin'].includes(role),
     },
     {
       id: 'soc',
